@@ -2,17 +2,41 @@ package cop5556fa17;
 
 import cop5556fa17.Scanner.Kind;
 import cop5556fa17.Scanner.Token;
+import cop5556fa17.AST.ASTNode;
 import cop5556fa17.AST.Declaration;
+import cop5556fa17.AST.Declaration_Image;
+import cop5556fa17.AST.Declaration_SourceSink;
 import cop5556fa17.AST.Declaration_Variable;
+import cop5556fa17.AST.Expression;
+import cop5556fa17.AST.Expression_Binary;
+import cop5556fa17.AST.Expression_BooleanLit;
+import cop5556fa17.AST.Expression_Conditional;
+import cop5556fa17.AST.Expression_FunctionApp;
+import cop5556fa17.AST.Expression_FunctionAppWithExprArg;
+import cop5556fa17.AST.Expression_FunctionAppWithIndexArg;
+import cop5556fa17.AST.Expression_Ident;
+import cop5556fa17.AST.Expression_IntLit;
+import cop5556fa17.AST.Expression_PixelSelector;
+import cop5556fa17.AST.Expression_PredefinedName;
+import cop5556fa17.AST.Expression_Unary;
+import cop5556fa17.AST.Index;
 import cop5556fa17.AST.LHS;
 import cop5556fa17.AST.Program;
 import cop5556fa17.AST.Sink;
+import cop5556fa17.AST.Sink_Ident;
+import cop5556fa17.AST.Sink_SCREEN;
+import cop5556fa17.AST.Source;
+import cop5556fa17.AST.Source_CommandLineParam;
+import cop5556fa17.AST.Source_Ident;
+import cop5556fa17.AST.Source_StringLiteral;
 import cop5556fa17.AST.Statement;
 import cop5556fa17.AST.Statement_Assign;
 import cop5556fa17.AST.Statement_In;
 import cop5556fa17.AST.Statement_Out;
 
 import static cop5556fa17.Scanner.Kind.*;
+
+import java.util.ArrayList;
 
 public class Parser {
 
@@ -55,17 +79,17 @@ public class Parser {
 	 */
 	Program program() throws SyntaxException {
 		// TODO implement this
+		ArrayList<ASTNode> decsAndStatements = new ArrayList<>();
+		Token firstToken = t;
+		Token name = t;
 
 		if (t.kind == IDENTIFIER) {
-
 			matchToken(IDENTIFIER);
-
 			while (t.kind == KW_int || t.kind == KW_boolean || t.kind == KW_image || t.kind == KW_url
 					|| t.kind == KW_file || t.kind == IDENTIFIER) {
-
 				if (t.kind == KW_int || t.kind == KW_boolean || t.kind == KW_image || t.kind == KW_url
 						|| t.kind == KW_file) {
-					declaration();
+					decsAndStatements.add(declaration());
 					if (t.kind == SEMI) {
 						matchToken(SEMI);
 					} else {
@@ -73,7 +97,7 @@ public class Parser {
 					}
 
 				} else if (t.kind == IDENTIFIER) {
-					statement();
+					decsAndStatements.add(statement());
 					if (t.kind == SEMI) {
 						matchToken(SEMI);
 					} else {
@@ -84,167 +108,218 @@ public class Parser {
 		} else {
 			throw new SyntaxException(t, "Illegal Start of Program");
 		}
+		return new Program(firstToken, name, decsAndStatements);
 	}
 
 	Declaration declaration() throws SyntaxException {
 		switch (t.kind) {
 		case KW_int:
 		case KW_boolean:
-			variableDeclaration();
-			break;
+			return variableDeclaration();
 		case KW_image:
-			imageDeclaration();
-			break;
+			return imageDeclaration();
 		case KW_url:
 		case KW_file:
-			sourceSinkDeclaration();
-			break;
+			return sourceSinkDeclaration();
 		default:
 			throw new SyntaxException(t, "Illegal Declaration");
 		}
 	}
 
+	Declaration_Variable variableDeclaration() throws SyntaxException {
+		Token firstToken = t;
+		Token type = varType();
+		Token name = t;
+		Expression e = null;
+		matchToken(IDENTIFIER);
+		if (t.kind == OP_ASSIGN) {
+			matchToken(OP_ASSIGN);
+			e = expression();
+		}
+		return new Declaration_Variable(firstToken, type, name, e);
+	}
+
+	Declaration_Image imageDeclaration() throws SyntaxException {
+		Token firstToken = t;
+		Source source = null;
+		Expression xSize = null;
+		Expression ySize = null;
+		matchToken(KW_image);
+		if (t.kind == LSQUARE) {
+			matchToken(LSQUARE);
+			xSize = expression();
+			matchToken(COMMA);
+			ySize = expression();
+			matchToken(RSQUARE);
+		}
+		Token name = t;
+		matchToken(IDENTIFIER);
+		if (t.kind == OP_LARROW) {
+			matchToken(OP_LARROW);
+			source = source();
+		}
+		return new Declaration_Image(firstToken, xSize, ySize, name, source);
+	}
+
+	Declaration_SourceSink sourceSinkDeclaration() throws SyntaxException {
+		Token firstToken = t;
+		Token type = sourceSinkType();
+		Token name = t;
+		matchToken(IDENTIFIER, OP_ASSIGN);
+		Source source = source();
+		return new Declaration_SourceSink(firstToken, type, name, source);
+	}
+
 	Statement statement() throws SyntaxException {
 		if (t.kind == IDENTIFIER && scanner.peek().kind == OP_RARROW) {
-			imageOutStatement();
+			return imageOutStatement();
 		} else if (t.kind == IDENTIFIER && scanner.peek().kind == OP_LARROW) {
-			imageInStatement();
+			return imageInStatement();
 		} else if ((t.kind == IDENTIFIER && scanner.peek().kind == OP_ASSIGN)
 				|| (t.kind == IDENTIFIER && scanner.peek().kind == LSQUARE)) {
-			assignmentStatement();
+			return assignmentStatement();
 		} else {
 			throw new SyntaxException(t, "Illegal Statement");
 		}
 	}
 
 	Statement_Out imageOutStatement() throws SyntaxException {
+		Token firstToken = t;
+		Token name = t;
 		matchToken(IDENTIFIER, OP_RARROW);
-		sink();
+		Sink sink = sink();
+		return new Statement_Out(firstToken, name, sink);
+	}
+
+	Statement_In imageInStatement() throws SyntaxException {
+		Token firstToken = t;
+		Token name = t;
+		matchToken(IDENTIFIER, OP_LARROW);
+		Source source = source();
+		return new Statement_In(firstToken, name, source);
+	}
+
+	Statement_Assign assignmentStatement() throws SyntaxException {
+		Token firstToken = t;
+		LHS lhs = lhs();
+		matchToken(OP_ASSIGN);
+		Expression e = expression();
+		return new Statement_Assign(firstToken, lhs, e);
 	}
 
 	Sink sink() throws SyntaxException {
+		Token firstToken = t;
 		switch (t.kind) {
 		case IDENTIFIER:
+			Token name = t;
 			matchToken(IDENTIFIER);
-			break;
+			return new Sink_Ident(firstToken, name);
 		case KW_SCREEN:
 			matchToken(KW_SCREEN);
-			break;
+			return new Sink_SCREEN(firstToken);
 		default:
 			throw new SyntaxException(t, "Illegal Sink");
 		}
 	}
 
-	Statement_In imageInStatement() throws SyntaxException {
-		matchToken(IDENTIFIER, OP_LARROW);
-		source();
-	}
-
-	Statement_Assign assignmentStatement() throws SyntaxException {
-		lhs();
-		matchToken(OP_ASSIGN);
-		expression();
+	Source source() throws SyntaxException {
+		Token firstToken = t;
+		switch (t.kind) {
+		case STRING_LITERAL:
+			String fileOrUrl = t.getText();
+			matchToken(STRING_LITERAL);
+			return new Source_StringLiteral(firstToken, fileOrUrl);
+		case OP_AT:
+			matchToken(OP_AT);
+			Expression paramNum = expression();
+			return new Source_CommandLineParam(firstToken, paramNum);
+		case IDENTIFIER:
+			Token name = t;
+			matchToken(IDENTIFIER);
+			return new Source_Ident(firstToken, name);
+		default:
+			throw new SyntaxException(t, "Illegal Source");
+		}
 	}
 
 	LHS lhs() throws SyntaxException {
+		Token firstToken = t;
+		Token name = t;
+		Index index = null;
 		matchToken(IDENTIFIER);
 		if (t.kind == LSQUARE) {
 			matchToken(LSQUARE);
-			lhsSelector();
+			index = lhsSelector();
 			matchToken(RSQUARE);
 		}
+		return new LHS(firstToken, name, index);
 	}
 
-	void lhsSelector() throws SyntaxException {
+	Index lhsSelector() throws SyntaxException {
+		Index index = null;
 		matchToken(LSQUARE);
 		if (t.kind == KW_x) {
-			xySelector();
+			index = xySelector();
 		} else if (t.kind == KW_r) {
-			raSelector();
+			index = raSelector();
 		}
 		matchToken(RSQUARE);
+		return index;
 	}
 
-	void xySelector() throws SyntaxException {
-		matchToken(KW_x, COMMA, KW_y);
+	Index xySelector() throws SyntaxException {
+		Token firstToken = t;
+		Kind kind = t.kind;
+		Expression e0 = new Expression_PredefinedName(firstToken, kind);
+		matchToken(KW_x, COMMA);
+		firstToken = t;
+		kind = t.kind;
+		Expression e1 = new Expression_PredefinedName(firstToken, kind);
+		matchToken(KW_y);
+		return new Index(firstToken, e0, e1);
 	}
 
-	void raSelector() throws SyntaxException {
-		matchToken(KW_r, COMMA, KW_A);
+	Index raSelector() throws SyntaxException {
+		Token firstToken = t;
+		Kind kind = t.kind;
+		Expression e0 = new Expression_PredefinedName(firstToken, kind);
+		matchToken(KW_r, COMMA);
+		firstToken = t;
+		kind = t.kind;
+		Expression e1 = new Expression_PredefinedName(firstToken, kind);
+		matchToken(KW_A);
+		return new Index(firstToken, e0, e1);
 	}
 
-	Declaration_Variable variableDeclaration() throws SyntaxException {
-		varType();
-		matchToken(IDENTIFIER);
-		if (t.kind == OP_ASSIGN) {
-			matchToken(OP_ASSIGN);
-			expression();
-		}
-	}
-
-	void varType() throws SyntaxException {
+	Token varType() throws SyntaxException {
+		Token type;
 		switch (t.kind) {
 		case KW_boolean:
+			type = t;
 			matchToken(KW_boolean);
-			break;
+			return type;
 		case KW_int:
+			type = t;
 			matchToken(KW_int);
-			break;
+			return type;
 		default:
 			throw new SyntaxException(t, "Illegal varType");
 		}
 	}
 
-	void imageDeclaration() throws SyntaxException {
-		matchToken(KW_image);
-		if (t.kind == LSQUARE) {
-			matchToken(LSQUARE);
-			expression();
-			matchToken(COMMA);
-			expression();
-			matchToken(RSQUARE);
-		}
-		matchToken(IDENTIFIER);
-		if (t.kind == OP_LARROW) {
-			matchToken(OP_LARROW);
-			source();
-		}
-
-	}
-
-	void sourceSinkDeclaration() throws SyntaxException {
-		sourceSinkType();
-		matchToken(IDENTIFIER, OP_ASSIGN);
-		source();
-	}
-
-	void sourceSinkType() throws SyntaxException {
+	Token sourceSinkType() throws SyntaxException {
+		Token type;
 		switch (t.kind) {
 		case KW_url:
+			type = t;
 			matchToken(KW_url);
-			break;
+			return type;
 		case KW_file:
+			type = t;
 			matchToken(KW_file);
-			break;
+			return type;
 		default:
 			throw new SyntaxException(t, "Illegal Source Sink Type");
-		}
-	}
-
-	void source() throws SyntaxException {
-		switch (t.kind) {
-		case STRING_LITERAL:
-			matchToken(STRING_LITERAL);
-			break;
-		case OP_AT:
-			matchToken(OP_AT);
-			expression();
-			break;
-		case IDENTIFIER:
-			matchToken(IDENTIFIER);
-			break;
-		default:
-			throw new SyntaxException(t, "Illegal Source");
 		}
 	}
 
@@ -254,11 +329,18 @@ public class Parser {
 	 * 
 	 * Our test cases may invoke this routine directly to support incremental
 	 * development.
+	 * @return 
 	 * 
 	 * @throws SyntaxException
 	 */
-	void expression() throws SyntaxException {
+	Expression expression() throws SyntaxException {
 		// TODO implement this.
+		
+		Token firstToken = t;
+		Expression condition = null;
+		Expression trueExpression = null;
+		Expression falseExpression = null;
+		
 		switch (t.kind) {
 		case OP_PLUS:
 		case OP_MINUS:
@@ -286,50 +368,73 @@ public class Parser {
 		case KW_DEF_X:
 		case KW_DEF_Y:
 		case BOOLEAN_LITERAL:
-			orExpression();
+			condition = orExpression();
 			if (t.kind == OP_Q) {
 				matchToken(OP_Q);
-				expression();
+				trueExpression = expression();
 				matchToken(OP_COLON);
-				expression();
+				falseExpression = expression();
+				return new Expression_Conditional(firstToken, condition, trueExpression, falseExpression);
 			}
-			break;
+			return condition;
 		default:
 			throw new SyntaxException(t, "Illegal Start of Expression");
 		}
 	}
 
-	void orExpression() throws SyntaxException {
-		andExpression();
+	Expression orExpression() throws SyntaxException {
+		Token firstToken = t;
+		Token op = null;
+		Expression e0 = andExpression();
+		Expression e1 = null;
 		while (t.kind == OP_OR) {
+			op = t;
 			matchToken(OP_OR);
-			andExpression();
+			e1 = andExpression();
+			e0 = new Expression_Binary(firstToken, e0, op, e1);
 		}
+		return e0;
 	}
 
-	void andExpression() throws SyntaxException {
-		eqExpression();
+	Expression andExpression() throws SyntaxException {
+		Token firstToken = t;
+		Token op = null;
+		Expression e0 = eqExpression();
+		Expression e1 = null;
 		while (t.kind == OP_AND) {
+			op = t;
 			matchToken(OP_AND);
-			eqExpression();
+			e1 = eqExpression();
+			e0 = new Expression_Binary(firstToken, e0, op, e1);
 		}
+		return e0;
 	}
 
-	void eqExpression() throws SyntaxException {
-		relExpression();
+	Expression eqExpression() throws SyntaxException {
+		Token firstToken = t;
+		Token op = null;
+		Expression e0 = relExpression();
+		Expression e1 = null;
 		while (t.kind == OP_EQ || t.kind == OP_NEQ) {
+			op = t;
 			if (t.kind == OP_EQ) {
 				matchToken(OP_EQ);
 			} else if (t.kind == OP_NEQ) {
 				matchToken(OP_NEQ);
 			}
-			relExpression();
+			e1 = relExpression();
+			e0 = new Expression_Binary(firstToken, e0, op, e1);
 		}
+		return e0;
 	}
 
-	void relExpression() throws SyntaxException {
-		addExpression();
+	Expression relExpression() throws SyntaxException {
+		Token firstToken = t;
+		Token op = null;
+		Expression e0 = addExpression();
+		Expression e1 = null;
 		while (t.kind == OP_LT || t.kind == OP_GT || t.kind == OP_LE || t.kind == OP_GE) {
+			op = t;
 			switch (t.kind) {
 			case OP_LT:
 				matchToken(OP_LT);
@@ -346,13 +451,19 @@ public class Parser {
 			default:
 				throw new SyntaxException(t, "Illegal Compare Expression");
 			}
-			addExpression();
+			e1 = addExpression();
+			e0 = new Expression_Binary(firstToken, e0, op, e1);
 		}
+		return e0;
 	}
 
-	void addExpression() throws SyntaxException {
-		multExpression();
+	Expression addExpression() throws SyntaxException {
+		Token firstToken = t;
+		Token op = null;
+		Expression e0 = multExpression();
+		Expression e1 = null;
 		while (t.kind == OP_PLUS || t.kind == OP_MINUS) {
+			op = t;
 			switch (t.kind) {
 			case OP_PLUS:
 				matchToken(OP_PLUS);
@@ -363,13 +474,19 @@ public class Parser {
 			default:
 				throw new SyntaxException(t, "Illegal Add/Subtract Expression");
 			}
-			multExpression();
+			e1 = multExpression();
+			e0 = new Expression_Binary(firstToken, e0, op, e1);
 		}
+		return e0;
 	}
 
-	void multExpression() throws SyntaxException {
-		unaryExpression();
+	Expression multExpression() throws SyntaxException {
+		Token firstToken = t;
+		Token op = null;
+		Expression e0 = unaryExpression();
+		Expression e1 = null;
 		while (t.kind == OP_TIMES || t.kind == OP_DIV || t.kind == OP_MOD) {
+			op = t;
 			switch (t.kind) {
 			case OP_TIMES:
 				matchToken(OP_TIMES);
@@ -383,20 +500,25 @@ public class Parser {
 			default:
 				throw new SyntaxException(t, "Illegal Multiplication Expression");
 			}
-			unaryExpression();
+			e1 = unaryExpression();
+			e0 = new Expression_Binary(firstToken, e0, op, e1);
 		}
+		return e0;
 	}
 
-	void unaryExpression() throws SyntaxException {
+	Expression unaryExpression() throws SyntaxException {
+		Token firstToken = t;
+		Token op = t;
+		Expression e = null;
 		switch (t.kind) {
 		case OP_PLUS:
 			matchToken(OP_PLUS);
-			unaryExpression();
-			break;
+			e = unaryExpression();
+			return new Expression_Unary(firstToken, op, e);
 		case OP_MINUS:
 			matchToken(OP_MINUS);
-			unaryExpression();
-			break;
+			e = unaryExpression();
+			return new Expression_Unary(firstToken, op, e);
 		case OP_EXCL:
 		case INTEGER_LITERAL:
 		case LPAREN:
@@ -421,19 +543,22 @@ public class Parser {
 		case KW_DEF_X:
 		case KW_DEF_Y:
 		case BOOLEAN_LITERAL:
-			unaryExpressionNotPlusMinus();
-			break;
+			return unaryExpressionNotPlusMinus();
 		default:
 			throw new SyntaxException(t, "Illegal Unary Expression");
 		}
 	}
 
-	void unaryExpressionNotPlusMinus() throws SyntaxException {
+	Expression unaryExpressionNotPlusMinus() throws SyntaxException {
+		Token firstToken = t;
+		Token op = t;
+		Kind kind = t.kind;
+		Expression e = null;
 		switch (t.kind) {
 		case OP_EXCL:
 			matchToken(OP_EXCL);
-			unaryExpression();
-			break;
+			e = unaryExpression();
+			return new Expression_Unary(firstToken, op, e);
 		case INTEGER_LITERAL:
 		case LPAREN:
 		case KW_sin:
@@ -445,59 +570,60 @@ public class Parser {
 		case KW_polar_a:
 		case KW_polar_r:
 		case BOOLEAN_LITERAL:
-			primary();
-			break;
+			return primary();
 		case IDENTIFIER:
-			identOrPixelSelectorExpression();
-			break;
+			return identOrPixelSelectorExpression();
 		case KW_x:
 			matchToken(KW_x);
-			break;
+			return new Expression_PredefinedName(firstToken, kind);
 		case KW_y:
 			matchToken(KW_y);
-			break;
+			return new Expression_PredefinedName(firstToken, kind);
 		case KW_r:
 			matchToken(KW_r);
-			break;
+			return new Expression_PredefinedName(firstToken, kind);
 		case KW_a:
 			matchToken(KW_a);
-			break;
+			return new Expression_PredefinedName(firstToken, kind);
 		case KW_X:
 			matchToken(KW_X);
-			break;
+			return new Expression_PredefinedName(firstToken, kind);
 		case KW_Y:
 			matchToken(KW_Y);
-			break;
+			return new Expression_PredefinedName(firstToken, kind);
 		case KW_Z:
 			matchToken(KW_Z);
-			break;
+			return new Expression_PredefinedName(firstToken, kind);
 		case KW_A:
 			matchToken(KW_A);
-			break;
+			return new Expression_PredefinedName(firstToken, kind);
 		case KW_R:
 			matchToken(KW_R);
-			break;
+			return new Expression_PredefinedName(firstToken, kind);
 		case KW_DEF_X:
 			matchToken(KW_DEF_X);
-			break;
+			return new Expression_PredefinedName(firstToken, kind);
 		case KW_DEF_Y:
 			matchToken(KW_DEF_Y);
-			break;
+			return new Expression_PredefinedName(firstToken, kind);
 		default:
 			throw new SyntaxException(t, "Illegal Unary Expression");
 		}
 	}
 
-	void primary() throws SyntaxException {
+	Expression primary() throws SyntaxException {
+		Token firstToken = t;
+		Expression e = null;
 		switch (t.kind) {
 		case INTEGER_LITERAL:
+			int intValue = t.intVal();
 			matchToken(INTEGER_LITERAL);
-			break;
+			return new Expression_IntLit(firstToken, intValue);
 		case LPAREN:
 			matchToken(LPAREN);
-			expression();
+			e = expression();
 			matchToken(RPAREN);
-			break;
+			return e;
 		case KW_sin:
 		case KW_cos:
 		case KW_atan:
@@ -506,73 +632,87 @@ public class Parser {
 		case KW_cart_y:
 		case KW_polar_a:
 		case KW_polar_r:
-			functionApplication();
-			break;
+			return functionApplication();
 		case BOOLEAN_LITERAL:
+			boolean boolValue = t.getText().equals("true") ? true : false;
 			matchToken(BOOLEAN_LITERAL);
-			break;
+			return new Expression_BooleanLit(firstToken, boolValue);
 		default:
 			throw new SyntaxException(t, "Illegal Primary Expression");
 		}
 	}
 
-	void identOrPixelSelectorExpression() throws SyntaxException {
+	Expression identOrPixelSelectorExpression() throws SyntaxException {
+		Token firstToken = t;
+		Token name = t;
+		Token ident = t;
 		matchToken(IDENTIFIER);
 		if (t.kind == LSQUARE) {
 			matchToken(LSQUARE);
-			selector();
+			Index index = selector();
 			matchToken(RSQUARE);
+			return new Expression_PixelSelector(firstToken, name, index);
 		}
+		return new Expression_Ident(firstToken, ident);
 	}
 
-	void functionApplication() throws SyntaxException {
+	Expression_FunctionApp functionApplication() throws SyntaxException {
+		Token firstToken = t;
+		Kind function = t.kind;
 		functionName();
 		if (t.kind == LPAREN) {
 			matchToken(LPAREN);
-			expression();
+			Expression arg = expression();
 			matchToken(RPAREN);
+			return new Expression_FunctionAppWithExprArg(firstToken, function, arg);
 		} else if (t.kind == LSQUARE) {
 			matchToken(LSQUARE);
-			selector();
+			Index arg = selector();
 			matchToken(RSQUARE);
+			return new Expression_FunctionAppWithIndexArg(firstToken, function, arg);
+		} else {
+			throw new SyntaxException(t, "Illegal Function Application");
 		}
 	}
 
-	void functionName() throws SyntaxException {
+	Token functionName() throws SyntaxException {
+		Token firstToken = t;
 		switch (t.kind) {
 		case KW_sin:
 			matchToken(KW_sin);
-			break;
+			return firstToken;
 		case KW_cos:
 			matchToken(KW_cos);
-			break;
+			return firstToken;
 		case KW_atan:
 			matchToken(KW_atan);
-			break;
+			return firstToken;
 		case KW_abs:
 			matchToken(KW_abs);
-			break;
+			return firstToken;
 		case KW_cart_x:
 			matchToken(KW_cart_x);
-			break;
+			return firstToken;
 		case KW_cart_y:
 			matchToken(KW_cart_y);
-			break;
+			return firstToken;
 		case KW_polar_a:
 			matchToken(KW_polar_a);
-			break;
+			return firstToken;
 		case KW_polar_r:
 			matchToken(KW_polar_r);
-			break;
+			return firstToken;
 		default:
 			throw new SyntaxException(t, "Illegal Function Name");
 		}
 	}
 
-	void selector() throws SyntaxException {
-		expression();
+	Index selector() throws SyntaxException {
+		Token firstToken = t;
+		Expression e0 = expression();
 		matchToken(COMMA);
-		expression();
+		Expression e1 = expression();
+		return new Index(firstToken, e0, e1);
 	}
 
 	/**

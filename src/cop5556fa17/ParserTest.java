@@ -1,17 +1,18 @@
 package cop5556fa17;
 
-import static org.junit.Assert.*;
+import static cop5556fa17.Scanner.Kind.KW_int;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
-import cop5556fa17.Scanner.LexicalException;
-import cop5556fa17.AST.*;
-
 import cop5556fa17.Parser.SyntaxException;
-
-import static cop5556fa17.Scanner.Kind.*;
+import cop5556fa17.Scanner.LexicalException;
+import cop5556fa17.AST.Declaration_Variable;
+import cop5556fa17.AST.Program;
 
 public class ParserTest {
 
@@ -21,6 +22,7 @@ public class ParserTest {
 
 	// To make it easy to print objects and turn this output on and off
 	static final boolean doPrint = true;
+
 	private void show(Object input) {
 		if (doPrint) {
 			System.out.println(input.toString());
@@ -41,47 +43,46 @@ public class ParserTest {
 		Scanner scanner = new Scanner(input).scan(); // Create a Scanner and
 														// initialize it
 		show(scanner); // Display the tokens
-		Parser parser = new Parser(scanner); //Create a parser
+		Parser parser = new Parser(scanner); // Create a parser
 		thrown.expect(SyntaxException.class);
 		try {
-			ASTNode ast = parser.parse();; //Parse the program, which should throw an exception
+			parser.parse();// Parse the program, which should throw an exception
 		} catch (SyntaxException e) {
-			show(e);  //catch the exception and show it
-			throw e;  //rethrow for Junit
+			show(e); // catch the exception and show it
+			throw e; // rethrow for Junit
 		}
 	}
 
-
 	@Test
 	public void testNameOnly() throws LexicalException, SyntaxException {
-		String input = "prog";  //Legal program with only a name
-		show(input);            //display input
-		Scanner scanner = new Scanner(input).scan();   //Create scanner and create token list
-		show(scanner);    //display the tokens
-		Parser parser = new Parser(scanner);   //create parser
-		Program ast = parser.parse();          //parse program and get AST
-		show(ast);                             //Display the AST
-		assertEquals(ast.name, "prog");        //Check the name field in the Program object
-		assertTrue(ast.decsAndStatements.isEmpty());   //Check the decsAndStatements list in the Program object.  It should be empty.
+		String input = "prog"; // Legal program with only a name
+		show(input); // display input
+		Scanner scanner = new Scanner(input).scan(); // Create scanner and create token list
+		show(scanner); // display the tokens
+		Parser parser = new Parser(scanner); // create parser
+		Program ast = parser.parse(); // parse program and get AST
+		show(ast); // Display the AST
+		assertEquals(ast.name, "prog"); // Check the name field in the Program object
+		assertTrue(ast.decsAndStatements.isEmpty()); // Check the decsAndStatements list in the Program object. It
+														// should be empty.
 	}
 
 	@Test
 	public void testDec1() throws LexicalException, SyntaxException {
 		String input = "prog int k;";
 		show(input);
-		Scanner scanner = new Scanner(input).scan(); 
-		show(scanner); 
+		Scanner scanner = new Scanner(input).scan();
+		show(scanner);
 		Parser parser = new Parser(scanner);
 		Program ast = parser.parse();
 		show(ast);
-		assertEquals(ast.name, "prog"); 
-		//This should have one Declaration_Variable object, which is at position 0 in the decsAndStatements list
-		Declaration_Variable dec = (Declaration_Variable) ast.decsAndStatements
-				.get(0);  
+		assertEquals(ast.name, "prog");
+		// This should have one Declaration_Variable object, which is at position 0 in
+		// the decsAndStatements list
+		Declaration_Variable dec = (Declaration_Variable) ast.decsAndStatements.get(0);
 		assertEquals(KW_int, dec.type.kind);
 		assertEquals("k", dec.name);
 		assertNull(dec.e);
 	}
-
 
 }
